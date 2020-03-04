@@ -20,8 +20,7 @@ impl ResourcePool {
   }
 }
 
-async fn handle(pool: Arc<ResourcePool>, mut connection: TcpStream) -> IOResult<()> {
-  let local_pool = pool.clone();
+async fn handle(local_pool: Arc<ResourcePool>, mut connection: TcpStream) -> IOResult<()> {
   let addr = match connection.peer_addr() {
     Ok(addr) => addr,
     Err(e) => {
