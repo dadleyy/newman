@@ -26,10 +26,13 @@ fn main() -> IOResult<()> {
 
       println!("received connection from {:?}", connection.peer_addr());
 
+      std::thread::sleep(std::time::Duration::from_secs(10));
+
       if let Err(e) = write!(connection, "{}", canned_response).await {
         println!("unable to write response: {}", e);
       }
 
+      println!("main thread continuing on");
       drop(connection);
     }
 
