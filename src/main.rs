@@ -20,29 +20,6 @@ impl ResourcePool {
   }
 }
 
-async fn handle(local_pool: Arc<ResourcePool>, mut connection: TcpStream) -> IOResult<()> {
-  let addr = match connection.peer_addr() {
-    Ok(addr) => addr,
-    Err(e) => {
-      println!("unable to get peer addr: {}", e);
-      return Err(e);
-    }
-  };
-
-  println!("connection[{}] thread spawned, sleeping for 10 seconds first", addr);
-  local_pool.send().await;
-  println!("connection[{}] waking up, writing response", addr);
-  let response = String::from(CANNED_RESPONSE);
-
-  if let Err(e) = async_std::io::copy(&mut response.as_bytes(), &mut connection).await {
-    println!("connection[{}] unable to write response: {}", addr, e);
-  }
-
-  println!("connection[{}] done", addr);
-  drop(connection);
-  Ok(())
-}
-
 fn main() -> IOResult<()> {
   println!("spawning async thread");
 
@@ -53,7 +30,7 @@ fn main() -> IOResult<()> {
     let pool = Arc::new(ResourcePool { pools: 10u8 });
 
     while let Some(attempt) = incoming.next().await {
-      let connection = match attempt {
+      let mut connection = match attempt {
         Ok(connection) => connection,
         Err(e) => {
           println!("received invalid connection: {}", e);
@@ -65,15 +42,13 @@ fn main() -> IOResult<()> {
       let local_pool = pool.clone();
 
       task::spawn(async {
-        handle(local_pool, connection).await;
+        // handle(local_pool, connection).await;
 
-        /*
-        let local_pool = pool.clone();
         let addr = match connection.peer_addr() {
           Ok(addr) => addr,
           Err(e) => {
             println!("unable to get peer addr: {}", e);
-            return;
+            return Err(e);
           }
         };
 
@@ -88,7 +63,7 @@ fn main() -> IOResult<()> {
 
         println!("connection[{}] done", addr);
         drop(connection);
-        */
+        Ok(())
       });
 
       println!("main thread continuing");
