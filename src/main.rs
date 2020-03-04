@@ -1,13 +1,15 @@
-use async_std::net::TcpListener;
+use async_std::net::{TcpListener, TcpStream};
 use async_std::prelude::*;
+use async_std::sync::Arc;
 
 use std::io::Result as IOResult;
 
 use async_std::task;
 
-const canned_response: &'static str = "HTTP/1.1 200 Ok\r\nContent-length: 0\r\n\r\n";
+const CANNED_RESPONSE: &'static str = "HTTP/1.1 200 Ok\r\nContent-length: 0\r\n\r\n";
 
 struct ResourcePool {
+  #[allow(unused)]
   pools: u8,
 }
 
@@ -18,6 +20,30 @@ impl ResourcePool {
   }
 }
 
+async fn handle(pool: Arc<ResourcePool>, mut connection: TcpStream) -> IOResult<()> {
+  let local_pool = pool.clone();
+  let addr = match connection.peer_addr() {
+    Ok(addr) => addr,
+    Err(e) => {
+      println!("unable to get peer addr: {}", e);
+      return Err(e);
+    }
+  };
+
+  println!("connection[{}] thread spawned, sleeping for 10 seconds first", addr);
+  local_pool.send().await;
+  println!("connection[{}] waking up, writing response", addr);
+  let response = String::from(CANNED_RESPONSE);
+
+  if let Err(e) = async_std::io::copy(&mut response.as_bytes(), &mut connection).await {
+    println!("connection[{}] unable to write response: {}", addr, e);
+  }
+
+  println!("connection[{}] done", addr);
+  drop(connection);
+  Ok(())
+}
+
 fn main() -> IOResult<()> {
   println!("spawning async thread");
 
@@ -25,10 +51,10 @@ fn main() -> IOResult<()> {
     println!("thread open, connecting listener");
     let listener = TcpListener::bind("0.0.0.0:8080").await?;
     let mut incoming = listener.incoming();
-    let pool = ResourcePool { pools: 10u8 };
+    let pool = Arc::new(ResourcePool { pools: 10u8 });
 
     while let Some(attempt) = incoming.next().await {
-      let mut connection = match attempt {
+      let connection = match attempt {
         Ok(connection) => connection,
         Err(e) => {
           println!("received invalid connection: {}", e);
@@ -37,8 +63,13 @@ fn main() -> IOResult<()> {
       };
 
       println!("received valid connection, spawning thread");
+      let local_pool = pool.clone();
 
       task::spawn(async {
+        handle(local_pool, connection).await;
+
+        /*
+        let local_pool = pool.clone();
         let addr = match connection.peer_addr() {
           Ok(addr) => addr,
           Err(e) => {
@@ -48,9 +79,9 @@ fn main() -> IOResult<()> {
         };
 
         println!("connection[{}] thread spawned, sleeping for 10 seconds first", addr);
-        pool.send().await;
+        local_pool.send().await;
         println!("connection[{}] waking up, writing response", addr);
-        let response = String::from(canned_response);
+        let response = String::from(CANNED_RESPONSE);
 
         if let Err(e) = async_std::io::copy(&mut response.as_bytes(), &mut connection).await {
           println!("connection[{}] unable to write response: {}", addr, e);
@@ -58,6 +89,7 @@ fn main() -> IOResult<()> {
 
         println!("connection[{}] done", addr);
         drop(connection);
+        */
       });
 
       println!("main thread continuing");
