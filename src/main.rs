@@ -24,16 +24,32 @@ fn main() -> IOResult<()> {
         }
       };
 
-      println!("received connection from {:?}", connection.peer_addr());
+      println!("received valid connection");
 
-      std::thread::sleep(std::time::Duration::from_secs(10));
+      task::spawn(async {
+        let addr = match connection.peer_addr() {
+          Ok(addr) => addr,
+          Err(e) => {
+            println!("unable to get peer addr: {}", e);
+            return;
+          }
+        };
 
-      if let Err(e) = write!(connection, "{}", canned_response).await {
-        println!("unable to write response: {}", e);
-      }
+        println!("connection[{}] thread spawned, sleeping for 10 seconds first", addr);
+        std::thread::sleep(std::time::Duration::from_secs(10));
 
-      println!("main thread continuing on");
-      drop(connection);
+        println!("connection[{}] waking up, writing response", addr);
+        let response = String::from(canned_response);
+
+        if let Err(e) = async_std::io::copy(&mut response.as_bytes(), &mut connection).await {
+          println!("connection[{}] unable to write response: {}", addr, e);
+        }
+
+        println!("connection[{}] done", addr);
+        drop(connection);
+      });
+
+      println!("main thread continuing");
     }
 
     Ok(())
