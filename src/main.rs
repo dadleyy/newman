@@ -7,6 +7,17 @@ use async_std::task;
 
 const canned_response: &'static str = "HTTP/1.1 200 Ok\r\nContent-length: 0\r\n\r\n";
 
+struct ResourcePool {
+  pools: u8,
+}
+
+impl ResourcePool {
+  pub async fn send(&self) -> IOResult<()> {
+    std::thread::sleep(std::time::Duration::from_secs(3));
+    Ok(())
+  }
+}
+
 fn main() -> IOResult<()> {
   println!("spawning async thread");
 
@@ -14,6 +25,7 @@ fn main() -> IOResult<()> {
     println!("thread open, connecting listener");
     let listener = TcpListener::bind("0.0.0.0:8080").await?;
     let mut incoming = listener.incoming();
+    let pool = ResourcePool { pools: 10u8 };
 
     while let Some(attempt) = incoming.next().await {
       let mut connection = match attempt {
@@ -24,7 +36,7 @@ fn main() -> IOResult<()> {
         }
       };
 
-      println!("received valid connection");
+      println!("received valid connection, spawning thread");
 
       task::spawn(async {
         let addr = match connection.peer_addr() {
@@ -36,8 +48,7 @@ fn main() -> IOResult<()> {
         };
 
         println!("connection[{}] thread spawned, sleeping for 10 seconds first", addr);
-        std::thread::sleep(std::time::Duration::from_secs(10));
-
+        pool.send().await;
         println!("connection[{}] waking up, writing response", addr);
         let response = String::from(canned_response);
 
